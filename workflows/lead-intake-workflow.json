@@ -1,0 +1,164 @@
+{
+  "name": "Lead Intake Validation and Scoring API",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Lead Intake API\nPOST /webhook/lead-intake\n1. Webhook receives JSON\n2. Code node validates, cleans and scores the lead\n3. IF routes valid vs invalid\n4. Responds 200 with priority, or 400 with errors\n\nExtend: Slack alert for hot leads, Google Sheets/CRM append, AI classification, Error Trigger workflow.",
+        "height": 240,
+        "width": 420
+      },
+      "id": "n-note",
+      "name": "Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        200,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        340
+      ],
+      "webhookId": "lead-intake-demo"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate, normalise and score an incoming lead (runs once per webhook call)\nconst body = $input.first().json.body || {};\nconst clean = (v) => (typeof v === 'string' ? v.trim() : '');\n\nconst lead = {\n  name: clean(body.name),\n  email: clean(body.email).toLowerCase(),\n  phone: clean(body.phone),\n  message: clean(body.message),\n  source: clean(body.source) || 'unknown',\n};\n\n// 1) Validation\nconst errors = [];\nif (!lead.name) errors.push('name is required');\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(lead.email)) errors.push('a valid email is required');\nif (lead.message.length < 10) errors.push('message must be at least 10 characters');\n\n// 2) Rule-based lead score (0-100)\nlet score = 0;\nconst freeMail = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];\nconst domain = lead.email.split('@')[1] || '';\nif (domain && !freeMail.includes(domain)) score += 20;          // business email\nif (lead.phone) score += 30;                                     // left a phone number\nif (/\\b(price|pricing|quote|demo|book|urgent|buy)\\b/i.test(lead.message)) score += 30; // buying intent\nif (lead.message.length >= 50) score += 20;                      // detailed message\n\nconst priority = score >= 70 ? 'hot' : score >= 40 ? 'warm' : 'cold';\n\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors,\n    lead,\n    score,\n    priority,\n    receivedAt: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "n-code",
+      "name": "Validate and Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n-if",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: \"accepted\", priority: $json.priority, score: $json.score, receivedAt: $json.receivedAt }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "n-ok",
+      "name": "Respond 200 Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: \"rejected\", errors: $json.errors }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "n-bad",
+      "name": "Respond 400 Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        440
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate and Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Score Lead": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400 Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
