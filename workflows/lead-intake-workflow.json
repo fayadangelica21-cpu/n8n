@@ -3,17 +3,17 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Lead Intake API\nPOST /webhook/lead-intake\n1. Webhook receives JSON\n2. Code node validates, cleans and scores the lead\n3. IF routes valid vs invalid\n4. Responds 200 with priority, or 400 with errors\n\nExtend: Slack alert for hot leads, Google Sheets/CRM append, AI classification, Error Trigger workflow.",
+        "content": "## Lead Intake API\nPOST /webhook/lead-intake\n1. Webhook receives JSON\n2. Code node validates, cleans and scores the lead\n3. IF routes valid vs invalid\n4. Responds 200 with priority, or 400 with errors\n5. Hot leads trigger a Slack alert\n\nExtend: hot leads, Google Sheets/CRM append, AI classification, Error Trigger workflow.",
         "height": 240,
         "width": 420
       },
-      "id": "n-note",
+      "id": "be5438c6-8b19-4bfe-a58d-b88b2a05ebbc",
       "name": "Notes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        200,
-        60
+        -384,
+        -192
       ]
     },
     {
@@ -23,13 +23,13 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "n-webhook",
+      "id": "80f471ae-abe6-4c9e-a43d-7fc235b7d6df",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        240,
-        340
+        -352,
+        96
       ],
       "webhookId": "lead-intake-demo"
     },
@@ -37,13 +37,13 @@
       "parameters": {
         "jsCode": "// Validate, normalise and score an incoming lead (runs once per webhook call)\nconst body = $input.first().json.body || {};\nconst clean = (v) => (typeof v === 'string' ? v.trim() : '');\n\nconst lead = {\n  name: clean(body.name),\n  email: clean(body.email).toLowerCase(),\n  phone: clean(body.phone),\n  message: clean(body.message),\n  source: clean(body.source) || 'unknown',\n};\n\n// 1) Validation\nconst errors = [];\nif (!lead.name) errors.push('name is required');\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(lead.email)) errors.push('a valid email is required');\nif (lead.message.length < 10) errors.push('message must be at least 10 characters');\n\n// 2) Rule-based lead score (0-100)\nlet score = 0;\nconst freeMail = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];\nconst domain = lead.email.split('@')[1] || '';\nif (domain && !freeMail.includes(domain)) score += 20;          // business email\nif (lead.phone) score += 30;                                     // left a phone number\nif (/\\b(price|pricing|quote|demo|book|urgent|buy)\\b/i.test(lead.message)) score += 30; // buying intent\nif (lead.message.length >= 50) score += 20;                      // detailed message\n\nconst priority = score >= 70 ? 'hot' : score >= 40 ? 'warm' : 'cold';\n\nreturn [{\n  json: {\n    valid: errors.length === 0,\n    errors,\n    lead,\n    score,\n    priority,\n    receivedAt: new Date().toISOString(),\n  },\n}];"
       },
-      "id": "n-code",
+      "id": "4f17c081-939a-4682-8309-60442c973ea8",
       "name": "Validate and Score Lead",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
-        340
+        -112,
+        96
       ]
     },
     {
@@ -52,7 +52,8 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -70,13 +71,13 @@
         },
         "options": {}
       },
-      "id": "n-if",
+      "id": "5619f566-bcdf-44c3-8577-2972a6c70595",
       "name": "Is Valid?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        720,
-        340
+        144,
+        96
       ]
     },
     {
@@ -87,13 +88,13 @@
           "responseCode": 200
         }
       },
-      "id": "n-ok",
+      "id": "1be2fb57-547b-4e67-a8e5-cf4287d63a10",
       "name": "Respond 200 Accepted",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        960,
-        260
+        384,
+        16
       ]
     },
     {
@@ -104,16 +105,80 @@
           "responseCode": 400
         }
       },
-      "id": "n-bad",
+      "id": "e9d528e4-0ce3-413c-8e1d-ee4f5d386dbc",
       "name": "Respond 400 Rejected",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        960,
-        440
+        384,
+        192
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "71916b28-185a-4bef-8972-9803d0151794",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        608,
+        16
+      ],
+      "id": "2b0ced0c-98ff-46fa-a3fa-015ac8ba637a",
+      "name": "isHOT"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_SLACK_WEBHOOK_URL",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: \"Hot lead: \" + $json.lead.name + \" (\" + $json.lead.email + \") score \" + $json.score + \". Message: \" + $json.lead.message }) }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        800,
+        -144
+      ],
+      "id": "bee6982e-1d96-4939-9aaf-4cdcd282fd64",
+      "name": "Send Slack Alert",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        832,
+        112
+      ],
+      "id": "79e8da77-b0c0-432c-9538-e94ea4d2b750",
+      "name": "no alert needed"
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook": {
       "main": [
@@ -154,11 +219,47 @@
           }
         ]
       ]
+    },
+    "Respond 200 Accepted": {
+      "main": [
+        [
+          {
+            "node": "isHOT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "isHOT": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "no alert needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
-  "pinData": {}
+  "versionId": "b6cfe55e-4906-42ba-ba17-add4c526191f",
+  "meta": {
+    "instanceId": "7189d6f4df2c43c64228a0376a64e9149efa625e96a65f3f5dfcbf619b4b970b"
+  },
+  "nodeGroups": [],
+  "id": "7iBhz2rtAGsBJrrE",
+  "tags": []
 }
