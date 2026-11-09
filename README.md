@@ -1,10 +1,10 @@
 # Lead Intake Validation and Scoring API (n8n)
 
-An n8n workflow that turns a webhook into a small API. It receives a lead as JSON, validates and cleans it, scores it with transparent rules, replies with the result, and sends a Slack alert for hot leads.
+An n8n workflow that turns a webhook into a small API. It receives a lead as JSON, validates and cleans it, scores it with transparent rules, replies with the result, and for hot leads writes a one-sentence AI summary and sends it to Slack.
 
 Built with AI assistance (Claude), then run, tested and reviewed by me.
 
-![Workflow with Slack alert](docs/workflow-with-slack.jpg)
+![Workflow with AI summary and Slack alert](docs/workflow-with-ai.jpg)
 
 ## What it does
 
@@ -13,7 +13,7 @@ Webhook (POST)
    -> Validate and Score Lead (Code)
    -> Is Valid? (IF)
         true  -> Respond 200 Accepted -> isHOT (IF)
-                                            true  -> Send Slack Alert (HTTP Request)
+                                            true  -> AI Lead Summary (Gemini) -> Send Slack Alert (HTTP Request)
                                             false -> no alert needed
         false -> Respond 400 Rejected
 ```
@@ -26,8 +26,9 @@ Webhook (POST)
    - message of 50+ characters: +20
    - priority: `hot` (70+), `warm` (40-69), `cold` (below 40)
 3. **Is Valid?** (IF node): valid leads get HTTP 200 with priority and score; invalid ones get HTTP 400 with a list of errors.
-4. **isHOT** (IF node): runs after the 200 response has been sent. If `priority` is equal to `hot`, the lead goes to the Slack step; otherwise it ends at `no alert needed`.
-5. **Send Slack Alert** (HTTP Request node): posts a message to a Slack channel through an incoming webhook. It is set to continue on error, so a Slack failure never breaks the API response.
+4. **isHOT** (IF node): runs after the 200 response has been sent. If `priority` is equal to `hot`, the lead goes to the AI step; otherwise it ends at `no alert needed`.
+5. **AI Lead Summary** (Basic LLM Chain with Google Gemini): hot leads only. Writes one sentence (20 words max) saying what the lead wants and how urgent it is. It is set to continue on error, so an AI failure never blocks the alert.
+6. **Send Slack Alert** (HTTP Request node): posts the lead details and the AI summary to a Slack channel through an incoming webhook. It also continues on error, so a Slack failure never breaks the API response. The API reply is sent before the AI and Slack steps run.
 
 ## Repository layout
 
@@ -67,9 +68,17 @@ Use `samples/valid-lead.json`, `samples/cold-lead.json` or `samples/invalid-lead
 
 | Sample | Response | Slack alert |
 |---|---|---|
-| `valid-lead.json` | HTTP 200, `{"status":"accepted","priority":"hot","score":100,...}` | Yes |
+| `valid-lead.json` | HTTP 200, `{"status":"accepted","priority":"hot","score":100,...}` | Yes, with AI summary |
 | `cold-lead.json` | HTTP 200, `{"status":"accepted","priority":"cold","score":0,...}` | No |
 | `invalid-lead.json` | HTTP 400, `{"status":"rejected","errors":["name is required","a valid email is required","message must be at least 10 characters"]}` | No |
+
+## Setting up the AI summary
+
+1. Create a free API key at aistudio.google.com (**Get API key**).
+2. In n8n, open the `Google Gemini Chat Model` node and create a credential with that key. It is stored in n8n, not in the workflow file.
+3. Choose a Gemini Flash model.
+
+The exported workflow contains only the credential's name, never the key.
 
 ## Setting up the Slack alert
 
@@ -90,7 +99,9 @@ The URL is a secret. It is not stored in this repo: the exported workflow contai
 
 ![isHOT true branch](docs/isHot-true.jpg)
 
-![Slack alert](docs/slack-alert.jpg)
+![AI Lead Summary output](docs/ai-summary-output.png)
+
+![Slack alert with AI summary](docs/slack-alert-ai.jpg)
 
 **Cold lead: the 200 branch runs and no alert is sent**
 
@@ -115,18 +126,19 @@ The URL is a secret. It is not stored in this repo: the exported workflow contai
 - Returning clear error messages from an API instead of failing silently.
 - Calling an external service (Slack) through an incoming webhook, and keeping that call from breaking the main response by continuing on error.
 - Debugging a real bug: my first `isHOT` condition used "exists" instead of "is equal to", so cold leads triggered alerts. I found it by checking the node's input and output, fixed the condition, and retested all three samples.
-- Keeping secrets out of the repo by using a placeholder in the exported workflow.
+- Adding an LLM step with a prompt that returns one short sentence, using the lead's message as input.
+- Making AI and Slack failures non-fatal (continue on error, fallback text), and keeping keys out of the repo with n8n credentials and a placeholder URL.
 
 ## Next steps
 
 - [x] Slack alert when `priority` is `hot`
-- [ ] LLM step to classify intent or draft a reply
+- [x] LLM step that summarizes hot leads (Gemini)
 - [ ] Append each lead to Google Sheets or a CRM
 - [ ] Error Trigger workflow to alert on failures
 
 ## Security
 
-No credentials or webhook URLs are stored in this repo. Use n8n's credential manager or the placeholder approach for any keys you add.
+No credentials, API keys or webhook URLs are stored in this repo. API keys live in n8n's credential manager, and the exported workflow uses the placeholder `YOUR_SLACK_WEBHOOK_URL`.
 
 ## License
 

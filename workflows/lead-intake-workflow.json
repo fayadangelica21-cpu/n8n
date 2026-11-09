@@ -148,25 +148,6 @@
       "name": "isHOT"
     },
     {
-      "parameters": {
-        "method": "POST",
-        "url": "YOUR_SLACK_WEBHOOK_URL",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ text: \"Hot lead: \" + $json.lead.name + \" (\" + $json.lead.email + \") score \" + $json.score + \". Message: \" + $json.lead.message }) }}\n",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.5,
-      "position": [
-        800,
-        -144
-      ],
-      "id": "bee6982e-1d96-4939-9aaf-4cdcd282fd64",
-      "name": "Send Slack Alert",
-      "onError": "continueRegularOutput"
-    },
-    {
       "parameters": {},
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -176,6 +157,61 @@
       ],
       "id": "79e8da77-b0c0-432c-9538-e94ea4d2b750",
       "name": "no alert needed"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Summarize this sales lead in ONE sentence of at most 20 words: what they want and how urgent it is. Reply with the sentence only.\n\nLead message: {{ $('Validate and Score Lead').item.json.lead.message }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        928,
+        -144
+      ],
+      "id": "4d1e59ef-a5fc-459a-8bb4-da6b676ea3c1",
+      "name": "AI Lead Summary",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        976,
+        16
+      ],
+      "id": "3ba8d2e9-9970-4863-8c96-b2f000fa5fbe",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "wDrCVkMrUeAlq6Kj",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_SLACK_WEBHOOK_URL",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: \"Hot lead: \" + $('Validate and Score Lead').item.json.lead.name + \" (\" + $('Validate and Score Lead').item.json.lead.email + \") score \" + $('Validate and Score Lead').item.json.score + \". Message: \" + $('Validate and Score Lead').item.json.lead.message + \" | AI summary: \" + ($json.text || \"not available\") }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1296,
+        -144
+      ],
+      "id": "28e0bcf3-6295-4b58-9896-6105c9e4e725",
+      "name": "Send Slack Alert",
+      "onError": "continueRegularOutput"
     }
   ],
   "pinData": {},
@@ -235,7 +271,7 @@
       "main": [
         [
           {
-            "node": "Send Slack Alert",
+            "node": "AI Lead Summary",
             "type": "main",
             "index": 0
           }
@@ -248,6 +284,28 @@
           }
         ]
       ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Lead Summary",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Lead Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -255,8 +313,9 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "b6cfe55e-4906-42ba-ba17-add4c526191f",
+  "versionId": "e215969d-4f60-4e7b-8598-246e110e01c0",
   "meta": {
+    "templateCredsSetupCompleted": true,
     "instanceId": "7189d6f4df2c43c64228a0376a64e9149efa625e96a65f3f5dfcbf619b4b970b"
   },
   "nodeGroups": [],
